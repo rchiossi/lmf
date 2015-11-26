@@ -89,6 +89,9 @@ def load_deck(filename):
         amount = int(m.group(1))
         card = m.group(2)
 
+        if FILTER_BASICS and card in basics:
+            continue
+
         if card in cards:
             cards[card] += amount
         else:
@@ -191,9 +194,6 @@ def main():
 
     table = {}
     for card, amount in deck.items():
-        if FILTER_BASICS and card in basics:
-            continue
-
         print("\nLoading price for: %s" % card)
         price_list = get_price_list(card)
 
