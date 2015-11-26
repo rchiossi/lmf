@@ -64,7 +64,7 @@ def get_price_list(card):
     url = "http://www.ligamagic.com.br/?view=cards/card&%s" % urllib.parse.urlencode({'card': card})
     print(url)
 
-    with open("%s.html" % urllib.parse.urlencode({'card': card}), "r") as f:
+    with open("data/%s.html" % urllib.parse.urlencode({'card': card}), "r") as f:
         data = f.read()
 
 #    with urllib.request.urlopen(url) as f:
