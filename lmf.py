@@ -26,9 +26,48 @@ def print_price_list(price_list):
     print("-" * 80)
 
 
-def print_minimized(select):
-    for key, item in select.items():
-        print("{0:10.10} : {1}".format(key, " ".join("{0:1}".format('\033[92mX\033[0m' if v else '-') for v in item)))
+def print_cards(deck):
+    cards = sorted(deck.keys())
+
+    print('# Cartas -------')
+    for l, card in zip(range(len(cards)), cards):
+        print('{:3}: {}x {}'.format(l, deck[card], card))
+
+
+def print_price_table(table, select):
+    cards = sorted(set([c for (c, s) in table.keys()]))
+    stores = sorted(set([s for (c, s) in table.keys()]))
+
+    fmt = '| {:^15.15} |' + ' {:>6}' * len(cards) + ' |'
+    header = fmt.format('Loja / Carta', *range(len(cards)))
+
+    print('\n' + '-' * len(header))
+    print(header)
+    print('-' * len(header))
+
+    for store in stores:
+        values = []
+
+        if store in select.values():
+            fmt = '| \033[91m{:15.15}\033[0m |'.format(store)
+        else:
+            fmt = '| {:15.15} |'.format(store)
+
+        for card in cards:
+            v = '.'
+            if (card, store) in table.keys():
+                v = table[card, store]
+
+            if select is not None and card in select.keys() and select[card] == store:
+                fmt += ' \033[92m{:>6}\033[0m'
+            else:
+                fmt += ' {:>6}'
+
+            values.append(v)
+
+        print(fmt.format(*values) + ' |')
+
+    print('-' * len(header))
 
 
 def load_deck(filename):
@@ -62,15 +101,14 @@ def get_price_list(card):
     price_list = []
 
     url = "http://www.ligamagic.com.br/?view=cards/card&%s" % urllib.parse.urlencode({'card': card})
-    print(url)
 
-    with open("data/%s.html" % urllib.parse.urlencode({'card': card}), "r") as f:
-        data = f.read()
+#    with open("data/%s.html" % urllib.parse.urlencode({'card': card}), "r") as f:
+#        data = f.read()
 
-#    with urllib.request.urlopen(url) as f:
-#        data = f.read().decode('utf-8')
+    with urllib.request.urlopen(url) as f:
+        data = f.read().decode('utf-8')
 
-#        with open("%s.html" % urllib.parse.urlencode({'card':card}), "w") as out:
+#        with open("data/%s.html" % urllib.parse.urlencode({'card':card}), "w") as out:
 #            out.write(data)
 
     data = html.unescape(data)
@@ -85,51 +123,51 @@ def get_price_list(card):
     for block in m:
         lines = block.split('\n')[1:-1]
 
-        title = re.search("title='(.+)'", lines[0]).group(1)
+        store = re.search("title='(.+)'", lines[0]).group(1)
         edition = re.search('title="(.+)"', lines[1]).group(1)
         price = float(
             re.search("<b>R\$ (.+)</b>", lines[2]).group(1).replace(',', '.'))
-        quantity = int(re.search(">(.+) unid", lines[3]).group(1))
+        amount = int(re.search(">(.+) unid", lines[3]).group(1))
 
-        price_list.append((title, edition, quantity, price))
+        price_list.append((store, edition, amount, price))
 
     return price_list
 
 
-def card_table(price_list, amount):
-    ct = {}
-    for item in price_list:
-        if item[2] < amount:
-            continue
-        if item[0] not in ct.keys() or item[3] < ct[item[0]]:
-            ct[item[0]] = item[3] * item[2]
+def minimize(table, stores):
+    cards = sorted(set([c for (c, s) in table.keys()]))
+    select = {}
 
-    return ct if len(ct) > 0 else None
+    if stores is None:
+        stores = sorted(set([s for (c, s) in table.keys()]))
 
-
-def minimize(group):
-    select = {key: [False] * len(group[key]) for key in group.keys()}
-    total = [-1] * len(next(iter(group.values())))
-
-    for k, g in group.items():
-        for n, v in enumerate(g):
-            if total[n] != -1 and v >= total[n]:
+    for card in cards:
+        v = -1
+        for store in stores:
+            if (card, store) not in table.keys():
                 continue
 
-            total[n] = v
-            for sk, si in select.items():
-                si[n] = sk == k
+            if v == -1 or table[card,store] < v:
+                v = table[card,store]
+                select[card] = store
 
-    return sum(total), select
+    return select
 
 
-def optimize(stores, limit):
-    comb = list(map(dict, itertools.combinations(stores.items(), limit)))
+def optimize(table, deck, limit):
+    stores = sorted(set([s for (c, s) in table.keys()]))
+    cards = sorted(set([c for (c, s) in table.keys()]))
+    comb = list(itertools.combinations(stores, limit))
     total = -1
     select = None
 
     for c in comb:
-        t, s = minimize(c)
+        s = minimize(table, c)
+
+        t = 0
+        for card in cards:
+            for store in stores:
+                t += table[card, store] * deck[card] if (card, store) in s.keys() else 99999999
 
         if total != -1 and t > total:
             continue
@@ -137,7 +175,7 @@ def optimize(stores, limit):
         total = t
         select = s
 
-    return total, select
+    return select
 
 
 def main():
@@ -151,47 +189,43 @@ def main():
         print("Error loading deck: %s" % sys.argv[1])
         sys.exit(0)
 
-    cards = {}
+    table = {}
     for card, amount in deck.items():
         if FILTER_BASICS and card in basics:
             continue
 
-        print("Getting price list for: %s" % card)
+        print("\nLoading price for: %s" % card)
         price_list = get_price_list(card)
+
+        print_price_list(price_list)
 
         if price_list is None:
             print("Card not found: %s" % card)
             continue
 
-        ct = card_table(price_list, amount)
+        for item in price_list:
+            if item[2] < amount:
+                continue
 
-        cards[card] = ct
+            table[card,item[0]] = item[3]
 
-    card_index = cards.keys()
+    select = minimize(table, None)
 
-    stores = {}
-    for n, card in enumerate(card_index):
-        table = cards[card]
-        for store, price in table.items():
-            if store not in stores:
-                stores[store] = [99999] * len(card_index)
+    print()
+    print_cards(deck)
+    print_price_table(table, select)
 
-            stores[store][n] = price
-
-    print("# Minimized ----------")
-
-    total, select = minimize(stores)
-
-    print("total = {0:.2f}".format(total))
-    print_minimized(select)
+    total = sum([table[card, store] * deck[card] for card, store in select.items()])
+    print("\n# Total = R$ {0:.2f}".format(total))
 
     for i in range(5, 0, -1):
         print("\n# Optimized {} ----------".format(i))
 
-        total, select = optimize(stores, i)
+        select = optimize(table, deck, i)
+        print_price_table(table, select)
 
-        print("total = {0:.2f}".format(total))
-        print_minimized(select)
+        total = sum([table[card, store] * deck[card] for card, store in select.items()])
+        print("\n# Total = R$ {0:.2f}".format(total))
 
 if __name__ == "__main__":
     main()
