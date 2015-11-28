@@ -170,7 +170,7 @@ def optimize(table, deck, limit):
         t = 0
         for card in cards:
             for store in stores:
-                t += table[card, store] * deck[card] if (card, store) in s.keys() else 99999999
+                t += table[card, store] * deck[card] if card in s.keys() and s[card] == store else 99999999
 
         if total != -1 and t > total:
             continue
