@@ -130,7 +130,7 @@ def get_price_list(card):
         edition = re.search('title="(.+)"', lines[1]).group(1)
         price = float(
             re.search("<b>R\$ (.+)</b>", lines[2]).group(1).replace(',', '.'))
-        amount = int(re.search(">(.+) unid", lines[3]).group(1))
+        amount = int(re.search(">(.+) unid", lines[3].replace(',','')).group(1))
 
         price_list.append((store, edition, amount, price))
 
